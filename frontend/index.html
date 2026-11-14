@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FleetPulse | Berlin AI Logistics Command Center</title>
+
+  <!-- Leaflet Map CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-dark: #0b0f19;
+      --bg-card: #111827;
+      --border: #1f2937;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --accent-green: #10b981;
+      --accent-blue: #3b82f6;
+      --accent-amber: #f59e0b;
+      --accent-red: #ef4444;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: 'Inter', sans-serif;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Top Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 24px;
+      background: var(--bg-card);
+      border-bottom: 1px solid var(--border);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      font-size: 1.2rem;
+      letter-spacing: -0.02em;
+    }
+    .live-dot {
+      width: 10px;
+      height: 10px;
+      background: var(--accent-green);
+      border-radius: 50%;
+      box-shadow: 0 0 12px var(--accent-green);
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.3); opacity: 0.6; }
+    }
+    .stack-badges span {
+      background: #1e293b;
+      color: #cbd5e1;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      padding: 5px 10px;
+      border-radius: 6px;
+      margin-left: 6px;
+      border: 1px solid #334155;
+    }
+
+    /* KPI Row */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      padding: 14px 24px;
+    }
+    .kpi-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .kpi-label { font-size: 0.78rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    .kpi-val { font-size: 1.65rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; margin-top: 4px; }
+
+    /* Main Workspace */
+    .workspace {
+      display: grid;
+      grid-template-columns: 1.75fr 1fr;
+      gap: 16px;
+      padding: 0 24px 20px;
+      flex: 1;
+      min-height: 0;
+    }
+    .map-container {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+    }
+    #berlinMap {
+      width: 100%;
+      height: 100%;
+      background: #0b0f19;
+    }
+
+    .side-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      min-height: 0;
+    }
+    .panel-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+    .panel-title {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      color: #e2e8f0;
+    }
+
+    /* Feed List */
+    .feed-list {
+      overflow-y: auto;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+    }
+    .feed-item {
+      background: #1e293b;
+      border-left: 3px solid var(--accent-red);
+      padding: 10px 12px;
+      border-radius: 6px;
+    }
+    .feed-item strong { color: #f87171; }
+    .feed-meta { color: var(--text-muted); font-size: 0.72rem; margin-top: 3px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="live-dot"></div>
+      <span>FLEETPULSE // BERLIN LOGISTICS & AI ENGINE</span>
+    </div>
+    <div class="stack-badges">
+      <span>Django DRF</span>
+      <span>Flask Ingestion</span>
+      <span>Kafka / Redis</span>
+      <span>Scikit-learn</span>
+      <span>Celery + RabbitMQ</span>
+    </div>
+  </header>
+
+  <section class="kpi-grid">
+    <div class="kpi-card">
+      <div>
+        <div class="kpi-label">Active Berlin Riders</div>
+        <div class="kpi-val" id="kpiRiders" style="color: var(--accent-green);">0</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div>
+        <div class="kpi-label">Telemetry Events Ingested</div>
+        <div class="kpi-val" id="kpiEvents" style="color: var(--accent-blue);">0</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div>
+        <div class="kpi-label">AI Anomalies Flagged</div>
+        <div class="kpi-val" id="kpiAnomalies" style="color: var(--accent-amber);">0</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div>
+        <div class="kpi-label">Celery Orders Rescued</div>
+        <div class="kpi-val" id="kpiRescued" style="color: var(--accent-red);">0</div>
+      </div>
+    </div>
+  </section>
+
+  <main class="workspace">
+    <!-- Left: Interactive Berlin Dark Map -->
+    <div class="map-container">
+      <div id="berlinMap"></div>
+    </div>
+
+    <!-- Right: AI ETA Chart + Celery Auto-Dispatch Feed -->
+    <div class="side-panel">
+      <div class="panel-box">
+        <div class="panel-title">
+          <span>Scikit-learn Live ETA Predictions (Mins)</span>
+          <span style="color: var(--accent-blue); font-size: 0.75rem;">HistGradientBoosting</span>
+        </div>
+        <div style="flex:1; position: relative;">
+          <canvas id="etaChart"></canvas>
+        </div>
+      </div>
+
+      <div class="panel-box">
+        <div class="panel-title">
+          <span>Celery + RabbitMQ Auto-Dispatch Log</span>
+          <span style="color: var(--accent-red); font-size: 0.75rem;">IsolationForest Trigger</span>
+        </div>
+        <div class="feed-list" id="dispatchFeed">
+          <div style="color: var(--text-muted);">Waiting for live telemetry anomalies...</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Leaflet JS & Chart.js -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <script>
+    // 1. Initialize Native Dark-Mode Berlin Map via Esri Dark Gray Canvas (Zero API Key / No Referer Block)
+    const map = L.map('berlinMap').setView([52.5186, 13.3761], 12);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 16,
+      attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ'
+    }).addTo(map);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 16
+    }).addTo(map);
+
+    const riderMarkers = {};
+
+    // 2. Initialize Chart.js for Live AI ETA Predictions
+    const ctx = document.getElementById('etaChart').getContext('2d');
+    const etaChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Predicted ETA (mins)',
+          data: [],
+          backgroundColor: '#3b82f6',
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#9ca3af', font: { size: 10 } }, grid: { display: false } },
+          y: { ticks: { color: '#9ca3af' }, grid: { color: '#1f2937' } }
+        }
+      }
+    });
+
+    // 3. Poll Flask Live Map & AI Engine Every 1.5 Seconds
+    async function refreshTelemetry() {
+      try {
+        const res = await fetch('http://127.0.0.1:5001/api/v1/live-map');
+        const data = await res.json();
+
+        document.getElementById('kpiRiders').textContent = data.count || 0;
+        document.getElementById('kpiEvents').textContent = data.total_events_ingested || 0;
+        document.getElementById('kpiAnomalies').textContent = data.anomalies_flagged || 0;
+        document.getElementById('kpiRescued').textContent = data.orders_reassigned || 0;
+
+        const riders = data.riders || [];
+        riders.sort((a, b) => a.rider_code.localeCompare(b.rider_code));
+
+        // Update Map Markers
+        riders.forEach(r => {
+          const color = r.is_anomaly ? '#ef4444' : (r.battery_pct < 35 ? '#f59e0b' : '#10b981');
+          const popupHtml = `
+            <div style="color:#111; font-family:Inter,sans-serif; font-size:12px;">
+              <strong>${r.rider_code}</strong><br/>
+              Speed: ${r.speed_kmh} km/h<br/>
+              Battery: ${r.battery_pct}%<br/>
+              AI ETA: <b>${r.predicted_eta_mins} mins</b><br/>
+              Status: ${r.is_anomaly ? '<b style="color:red;">ANOMALY</b>' : 'HEALTHY'}
+            </div>
+          `;
+
+          if (!riderMarkers[r.rider_code]) {
+            riderMarkers[r.rider_code] = L.circleMarker([r.lat, r.lng], {
+              radius: 8,
+              fillColor: color,
+              color: '#ffffff',
+              weight: 2,
+              fillOpacity: 0.9
+            }).addTo(map).bindPopup(popupHtml);
+          } else {
+            riderMarkers[r.rider_code].setLatLng([r.lat, r.lng]);
+            riderMarkers[r.rider_code].setStyle({ fillColor: color });
+            riderMarkers[r.rider_code].setPopupContent(popupHtml);
+          }
+        });
+
+        // Update AI ETA Bar Chart (Top 8 Riders)
+        const sample = riders.slice(0, 8);
+        etaChart.data.labels = sample.map(r => r.rider_code);
+        etaChart.data.datasets[0].data = sample.map(r => r.predicted_eta_mins);
+        etaChart.data.datasets[0].backgroundColor = sample.map(r => r.is_anomaly ? '#ef4444' : '#3b82f6');
+        etaChart.update();
+
+        // Update Celery Auto-Dispatch Feed
+        const feedEl = document.getElementById('dispatchFeed');
+        if (data.dispatch_feed && data.dispatch_feed.length > 0) {
+          feedEl.innerHTML = data.dispatch_feed.map(item => `
+            <div class="feed-item">
+              <div><strong>[CELERY RESCUE]</strong> Order <b>${item.order_code}</b> reassigned from ${item.failed_rider}</div>
+              <div class="feed-meta">${item.timestamp} • Trigger: ${item.reason} • AI ETA: ${item.eta_mins}m</div>
+            </div>
+          `).join('');
+        }
+      } catch (err) {
+        console.error("Waiting for Flask server on :5001...", err);
+      }
+    }
+
+    setInterval(refreshTelemetry, 1500);
+    refreshTelemetry();
+  </script>
+</body>
+</html>
